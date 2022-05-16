@@ -31,8 +31,8 @@ subs_path = dir_path + "output/" + subs_filename
 mz_decimals = 1
 
 # Output files
-filename_fasta = "skyline_input/fasta_skyline_unimods_all"
-filename_ssl = "skyline_input/skyline_input_unimods_all"
+filename_fasta = "skyline_input/fasta_skyline"
+filename_ssl = "skyline_input/skyline_input"
 
 # Timestamp
 now = dt.now()
@@ -162,16 +162,9 @@ output_DP = pd.DataFrame({
 
 mms["Raw file.raw"] = mms["Raw file"] + ".raw"
 
-gb = subs_merged.groupby(["DP base scan number", "Raw file"])["m/z"].count().reset_index()
+BP_list = list(subs_merged["DP Base Sequence"].unique())
 
-# Create identifier tuple consisting of scan number & raw file name (without .raw)
-ident_list = list(zip(gb["DP base scan number"], gb["Raw file"]))
-mms["ident_tuple"] = list(zip(mms["Scan number"], mms["Raw file"]))
-
-mms_BPscans = mms[mms["ident_tuple"].isin(ident_list)]
-
-# Diagnostics:
-# mms_BPscans.to_csv(os.path.join(dir_path, "Diagnostics/mms_BPscans.csv"))
+mms_BPscans = mms[mms["Sequence"].isin(BP_list)]
 
 output_BP = pd.DataFrame({
     "file": mms_BPscans["Raw file.raw"],
@@ -182,8 +175,12 @@ output_BP = pd.DataFrame({
     "modifications": mms_BPscans["Sequence"]
     })
 
+output_BP = output_BP[output_BP["charge"] != 0]
+
 # Diagnostics:
 # output_BP.to_csv(os.path.join(dir_path, "Diagnostics/output_BP.csv"))
+# gb1 = output_BP.groupby(["sequence"])["score"].count().reset_index()
+# gb1.to_csv(os.path.join(dir_path, "Diagnostics/output_BP_gb1.csv"))
 
 #%% Final output
 
