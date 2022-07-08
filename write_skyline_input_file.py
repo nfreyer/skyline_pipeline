@@ -81,6 +81,12 @@ def get_arguments():
         "--subs_out",
         help = 'Filters OUT all the specified amino acid substitutions (input format: "DE+ND+VIL" etc.).'
     )
+    
+    parser.add_argument(
+        "-ft",
+        "--free_text",
+        help = 'Free text filter for additional filter condition(s). Multiple inputs need to be separated by "&".'
+    )
 
     return parser.parse_args()
 
@@ -201,6 +207,12 @@ def main():
               'FILTERING ... Filter out substitutions: ' + ', '.join(subs_out_list) +
               ENDC_TEXT)
     
+    if args.free_text:
+        list_of_filters.append(args.free_text)
+        print(INFO_TEXT + 
+              'FILTERING ... Apply free text filter: ' + args.free_text + 
+              ENDC_TEXT)
+    
     query_cond = " & ".join(list_of_filters)
     
     if any([args.mispairing, args.danger, args.protein, args.subs_in, args.subs_out]):
@@ -222,7 +234,15 @@ def main():
     subs["position"].fillna(0, inplace=True)
     
     # Diagnostics:
-    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_cleaned.csv"))
+    if os.path.isdir(os.path.join(dir_path, "Diagnostics/")):
+        pass
+    else:
+        os.mkdir(os.path.join(dir_path, "Diagnostics/"))
+        print(INFO_TEXT +
+              "INFO ... Create diagnostics output directory." +
+              ENDC_TEXT)
+    
+    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered.csv"))
     # print("***INFO*** Nan Values in subs:")
     # print(subs.isna().sum())
     
