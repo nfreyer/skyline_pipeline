@@ -208,14 +208,15 @@ def main():
               ENDC_TEXT)
     
     if args.free_text:
-        list_of_filters.append(args.free_text)
+        ftf = args.free_text
+        list_of_filters.append(ftf)
         print(INFO_TEXT + 
-              'FILTERING ... Apply free text filter: ' + args.free_text + 
+              'FILTERING ... Apply free text filter: ' + ftf + 
               ENDC_TEXT)
     
     query_cond = " & ".join(list_of_filters)
     
-    if any([args.mispairing, args.danger, args.protein, args.subs_in, args.subs_out]):
+    if any([args.mispairing, args.danger, args.protein, args.subs_in, args.subs_out, args.free_text]):
         subs.query(query_cond, inplace=True, engine="python")
     
     if len(subs) == 0:
