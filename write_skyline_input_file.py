@@ -40,14 +40,14 @@ def get_arguments():
         "--decimals",
         type = int,
         default = 1,
-        help = 'Number of decimals to use for m/z values when merging subs & msmsScans files.'
+        help = 'Number of decimals to use for m/z values when merging subs & msmsScans files. Default = 1'
     )
     
     parser.add_argument(
         "-fn",
         "--filename",
         default = "subs_unimod",
-        help = 'Name of Pilpel script output file to use as subs input.'
+        help = 'Name of Pilpel script output file to use as subs input. Default = subs_unimod'
     )
     
     parser.add_argument(
