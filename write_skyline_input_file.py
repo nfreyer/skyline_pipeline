@@ -69,7 +69,7 @@ def get_arguments():
         "--protein",
         help = 'Filters out all peptides not from the specified protein. Requires gene name / regex as input.'
     )
-    
+
     parser.add_argument(
         "-si",
         "--subs_in",
@@ -85,7 +85,7 @@ def get_arguments():
     parser.add_argument(
         "-ft",
         "--free_text",
-        help = 'Free text filter for additional filter condition(s). Multiple inputs need to be separated by "&".'
+        help = 'Free text filter for additional filter condition(s). Multiple inputs need to be separated by "&". (input format: "column is in [list]", "column == regex".)'
     )
 
     return parser.parse_args()
