@@ -46,7 +46,7 @@ def get_arguments():
     parser.add_argument(
         "-fn",
         "--filename",
-        default = "subs_unimod",
+        default = "subs_unimod.csv",
         help = 'Name of Pilpel script output file to use as subs input. Default = subs_unimod'
     )
     
@@ -154,7 +154,7 @@ def main():
     
     #%% Import subs, filter, clean
     
-    subs = pd.read_pickle(subs_path)
+    subs = pd.read_csv(subs_path)
     
     # # Filters subs
     # subs_out = ["Q to E", "N to D", "F to Y", "T to E"] # unimods to exclude from analysis
@@ -243,7 +243,7 @@ def main():
               "INFO ... Create diagnostics output directory." +
               ENDC_TEXT)
     
-    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered.csv"))
+    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered_" + timestamp + ".csv"))
     # print("***INFO*** Nan Values in subs:")
     # print(subs.isna().sum())
     
