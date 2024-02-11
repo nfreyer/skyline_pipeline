@@ -143,7 +143,7 @@ def main():
     
     # Timestamp
     now = dt.now()
-    timestamp = now.strftime("_v%Y-%m-%d_%H-%M-%S")
+    timestamp = now.strftime("_v%Y%m%d")
     
     #%%
     
