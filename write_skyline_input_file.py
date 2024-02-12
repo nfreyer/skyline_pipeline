@@ -143,7 +143,8 @@ def main():
     
     # Timestamp
     now = dt.now()
-    timestamp = now.strftime("_v%Y%m%d")
+    timestamp = now.strftime("_v%Y-%m-%d_%H-%M-%S")
+    timestamp1 = now.strftime("_v%Y%m%d")
     
     #%%
     
@@ -243,7 +244,7 @@ def main():
               "INFO ... Create diagnostics output directory." +
               ENDC_TEXT)
     
-    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered_" + timestamp + ".csv"))
+    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered" + timestamp1 + ".csv"))
     # print("***INFO*** Nan Values in subs:")
     # print(subs.isna().sum())
     
