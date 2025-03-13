@@ -138,8 +138,8 @@ def main():
         print("The file specified does not exist.")
         sys.exit()
     
-    filename_fasta = "skyline_input/fasta_skyline"
-    filename_ssl = "skyline_input/skyline_input"
+    filename_fasta = "fasta_skyline"
+    filename_ssl = "skyline_input"
     
     # Timestamp
     now = dt.now()
@@ -236,26 +236,32 @@ def main():
     subs["position"].fillna(0, inplace=True)
     
     # Diagnostics:
-    if os.path.isdir(os.path.join(dir_path, "Diagnostics/")):
+    dir_path_out = os.path.join(dir_path, "skyline_input/")
+    
+    if os.path.isdir(dir_path_out):
         pass
     else:
-        os.mkdir(os.path.join(dir_path, "Diagnostics/"))
+        os.mkdir(dir_path_out)
         print(INFO_TEXT +
-              "INFO ... Create diagnostics output directory." +
+              "INFO ... Create output directory." +
               ENDC_TEXT)
     
-    subs.to_csv(os.path.join(dir_path, "Diagnostics/subs_filtered" + timestamp1 + ".csv"))
+    subs.to_csv(os.path.join(dir_path_out, "subs_filtered" + timestamp1 + ".csv"))
     # print("***INFO*** Nan Values in subs:")
     # print(subs.isna().sum())
     
     #%% Write fasta file
+    
+    print(INFO_TEXT +
+              "INFO ... Write fasta file." +
+              ENDC_TEXT)
     
     # Remove replicate entries
     columns_gb = ["protein", "DP Base Sequence", "modified_sequence", "position", "codon", "substitution"]
     subs_gb = subs[columns_gb + ["Raw file"]].groupby(columns_gb).count().reset_index()
     
     # Diagnostics: 
-    # subs_gb.to_csv(os.path.join(dir_path, "Diagnostics/subs_gb.csv"))
+    # subs_gb.to_csv(os.path.join(dir_path_out, "subs_gb.csv"))
     
     subs_gb.rename({"modified_sequence": "Seq_DP", "DP Base Sequence": "Seq_BP"}, axis=1, inplace=True)
     subs_gb["id"] = subs_gb.index
@@ -272,10 +278,10 @@ def main():
     subs_long["fasta"] = subs_long.apply(lambda row: fasta_line(row), axis=1)
     
     # Diagnostics:
-    # subs_long.to_csv(os.path.join(dir_path, "Diagnostics/subs_long.csv"))
+    # subs_long.to_csv(os.path.join(dir_path_out, "subs_long.csv"))
     
     # Write fasta file
-    filename1 = dir_path + filename_fasta + timestamp + ".fa"
+    filename1 = dir_path_out + filename_fasta + timestamp + ".fa"
     f = open(filename1, "a+")
     
     for index, row in subs_long.iterrows():
@@ -284,6 +290,10 @@ def main():
     f.close()
     
     #%% Import msms scans
+    
+    print(INFO_TEXT +
+              "INFO ... Import msms scans file." +
+              ENDC_TEXT)
     
     path_to_msmsscans = os.path.join(dir_path, "msmsScans.txt")
     mms_iter = pd.read_csv(path_to_msmsscans, sep="\t", chunksize=10000, iterator=True, low_memory=False)
@@ -304,9 +314,9 @@ def main():
                )
     
     # Diagnostics:
-    # subs_merged.to_csv(os.path.join(dir_path, "Diagnostics/subs_merged.csv"))
+    # subs_merged.to_csv(os.path.join(dir_path_out, "subs_merged.csv"))
     # duplicates = subs_merged[subs_merged[["Raw file", "m/z", "Charge", "DP Base Sequence", "DP Probabilities"]].duplicated(keep=False)]
-    # duplicates.to_csv(os.path.join(dir_path, "Diagnostics/duplicates.csv"))
+    # duplicates.to_csv(os.path.join(dir_path_out, "duplicates.csv"))
     
     
     #%% DP output table
@@ -323,7 +333,7 @@ def main():
         })
     
     # Diagnostics:
-    # output_DP.to_csv(os.path.join(dir_path, "Diagnostics/output_DP.csv"))
+    # output_DP.to_csv(os.path.join(dir_path_out, "output_DP.csv"))
     
     #%% BP output table
     
@@ -345,9 +355,9 @@ def main():
     output_BP = output_BP[output_BP["charge"] != 0]
     
     # Diagnostics:
-    # output_BP.to_csv(os.path.join(dir_path, "Diagnostics/output_BP.csv"))
+    # output_BP.to_csv(os.path.join(dir_path_out, "output_BP.csv"))
     # gb1 = output_BP.groupby(["sequence"])["score"].count().reset_index()
-    # gb1.to_csv(os.path.join(dir_path, "Diagnostics/output_BP_gb1.csv"))
+    # gb1.to_csv(os.path.join(dir_path_out, "output_BP_gb1.csv"))
     
     #%% Final output
     
@@ -357,14 +367,18 @@ def main():
     output["modifications"] = output["modifications"].str.replace("C", "C[+57.0]")
     
     # Write ssl file
-    filename2 = dir_path + filename_ssl + timestamp + ".ssl"
+    print(INFO_TEXT +
+              "INFO ... Write ssl file." +
+              ENDC_TEXT)
+    
+    filename2 = dir_path_out + filename_ssl + timestamp + ".ssl"
     output.to_csv(filename2, sep="\t", index=False)
     
-    # Diagnostic: 
-    # output.to_csv(os.path.join(dir_path, "Diagnostics/output.csv"))
+    # Diagnostics: 
+    # output.to_csv(os.path.join(dir_path_out, "output.csv"))
     print(INFO_TEXT + 
-          "INFO ... Number of rows in subs that have not been matched with mms row:", output["score"].isna().sum(),
+          "INFO ... Script finished. Number of rows in subs that have not been matched with mms row:", output["score"].isna().sum(),
           ENDC_TEXT)
-
+    
 if __name__ == '__main__':
     main()
