@@ -231,9 +231,9 @@ def main():
               ENDC_TEXT)
         
     # Clean data
-    subs["mispairing"].fillna(0, inplace=True)
-    subs["codon"].fillna("NNN", inplace=True)
-    subs["position"].fillna(0, inplace=True)
+    subs["mispairing"] = subs["mispairing"].fillna(0)
+    subs["codon"] = subs["codon"].fillna("NNN")
+    subs["position"] = subs["position"].fillna(0)
     
     # Diagnostics:
     dir_path_out = os.path.join(dir_path, "skyline_input/")
@@ -273,7 +273,7 @@ def main():
     # subs_long["Num"] = subs_long.index
     subs_long["Num"] = np.nan
     subs_long.loc[subs_long["Peptide_type"] == "BP", "Num"] = subs_long[subs_long["Peptide_type"] == "BP"].reset_index().index + 1
-    subs_long["Num"].fillna(method="ffill", inplace=True)
+    subs_long["Num"] = subs_long["Num"].ffill()
     
     subs_long["fasta"] = subs_long.apply(lambda row: fasta_line(row), axis=1)
     
