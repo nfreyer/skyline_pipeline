@@ -376,9 +376,14 @@ def main():
     
     # Diagnostics: 
     # output.to_csv(os.path.join(dir_path_out, "output.csv"))
-    print(INFO_TEXT + 
-          "INFO ... Script finished. Number of rows in subs that have not been matched with mms row:", output["score"].isna().sum(),
-          ENDC_TEXT)
+    if output["score"].isna().sum() == 0:
+        print(OKGREEN_TEXT + 
+              "INFO ... Script finished. All subs rows have been matched with mms rows.",
+              ENDC_TEXT)
+    else:
+        print(ERROR_TEXT + 
+              "INFO ... Script finished. Number of rows in subs that have not been matched with mms row:", output["score"].isna().sum(),
+              ENDC_TEXT)
     
 if __name__ == '__main__':
     main()
