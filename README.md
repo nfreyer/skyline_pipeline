@@ -4,8 +4,8 @@ This script enables the quantitative analysis of amino acid subtitutions from ma
 
 ## Available scripts
 `write_skyline_input_file.py` is the default script and is operated from the terminal. 
+
 `write_skyline_input_file_addon.py` takes entries from a curated list of peptides that can generally not be processed with the Dependent Peptide feature but could be identified in the MaxQuant search (e.g. peptides derived from missense errors leading to altered trypsin cleavage patterns). This script does not support loggers or operation from the terminal.
-`write_skyline_input_file_manual_input.py` allows filtering of the missense peptide list (subs file, derived from Mordret script) prior to generating the Skyline input files. Deprecated, this function is now integrated into the main script `write_skyline_input_file.py`.
 
 ## Example 
 Create Skyline input files with only near-cognate substitutions in the protein EF-Tu that are not found in the unimod database (with the exception off D to E).
