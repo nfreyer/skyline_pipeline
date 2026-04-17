@@ -8,12 +8,7 @@ Writes additional entries to add to automatically generated skyline input files.
 """
 
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
-import seaborn as sns
-import re
-import math
 from datetime import datetime as dt
 
 #%% Configuration

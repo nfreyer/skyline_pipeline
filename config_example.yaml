@@ -1,0 +1,10 @@
+# Path to cds fasta file
+path_to_cds: "W:/Nicola/Genome_files/Escherichia_coli_str_k_12_substr_mg1655_gca_000005845_MODv260415.ASM584v2.cdna.all.fa"
+# specify NCBI codon table to use during SeqIO translations
+# Table 1 = Standard
+# Table 2 = Vertebrate Mitochondrial (HUMAN)
+# Table 5 = Invertebrate Mitochondrial (DROSOPHILA)
+# Table 11 = Bacterial, Archaeal, Plant Plastid (E. COLI)
+codon_table: 11
+# Mass tolerance for identifying mods as subs
+tol: 0.005

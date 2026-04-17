@@ -5,6 +5,9 @@ Created on Thu Feb 12 13:54:12 2026
 formats fragpipe (msfragger, mass-offset search) results to subs output format
 to allow feeding into skyline_input script
 
+Requires config file
+Requires subs file for each codon table
+
 @author: nicola.freyer
 """
 
@@ -13,12 +16,15 @@ import numpy as np
 import os
 import sys
 import re
-# from Bio import SeqIO # only needed if codon information is required #TODO
+
+from Bio import SeqIO # only needed if codon information is required #TODO
+import Bio.Data.CodonTable as cd
+from Bio.Seq import Seq
+
 from functools import partial
-
 from datetime import datetime as dt
-
 import argparse
+import yaml
 
 os.system('color')
 
@@ -36,6 +42,118 @@ ENDC_TEXT = "\033[0m"
 
 #%% Functions
 
+def hamming(s1, s2):
+    return sum(a != b for a, b in zip(s1, s2))
+
+def get_codon_table(codons, amino_acids):
+    return dict(list(zip(codons, amino_acids)))
+
+def get_inverted_codon_table(ct):
+    inv_codon_table = {}
+    for k, v in ct.items():
+        inv_codon_table[v] = inv_codon_table.get(v, [])
+        inv_codon_table[v].append(k)
+    return inv_codon_table
+
+def codonify(seq):
+    """
+    Turns nucleotide sequence into list of triplet codons
+
+    Parameters
+    ----------
+    seq : str
+        Nucleotide sequence.
+
+    Returns
+    -------
+    list
+        list of triplet codons.
+
+    """
+    seq = str(seq)
+    l = len(seq)
+    return [seq[i : i + 3] for i in range(0, l, 3)]
+
+def is_subs(row, tol, df):
+    """
+    Takes a row of the psm.tsv style file (df) as input and checks this row's 
+    corresponding origin aa ("aa_origin" column) and modification delta mass
+    ("deltaM" column) against the reference table for aa substitutions 
+    to identify delta mass & aa combinations that could be produced by 
+    an amino acid substitution.
+
+    Parameters
+    ----------
+    row : pandas row
+        row of the psm.tsv file that is currently tested.
+    df : pandas table
+        reference table of aa subsitutions and corresponding delta masses
+        contains "delta_mass" and "aa_origin" columns
+    
+    Returns
+    -------
+    result : str (or list of str)
+        empty if no aa subs is possible, 
+        list of subs types if multiple subs are possible (impossible with mass tol of 0.005)
+        str for single possible subs type
+
+    """
+    aa_origin = row["aa_origin"]
+    delta_mass = row["deltaM"]
+    dmass_min = delta_mass - tol
+    dmass_max = delta_mass + tol
+    hit = df.loc[ (df["delta_mass"].between(dmass_min, dmass_max)) & 
+                     (df["aa_origin"] == aa_origin) ]
+    if hit.empty:
+        result = ""
+    elif len(hit) > 1:
+        # result = hit.loc[:,"Sub"].to_list() # should not be possible, remove? will cause issues downstream
+        result = "ERROR, multiple hits"
+    else:
+        result = hit["Sub"].to_list()[0]
+    
+    return result
+
+def is_gene(record, ct_id):
+    """
+    Checks if a record entry is a gene (starts with start codon, has triplet codons, and ends with stop codon)
+
+    Parameters
+    ----------
+    record : SeqIO record
+        fasta file record.
+    ct_id : int
+        NCBI codon table.
+
+    Returns
+    -------
+    bool
+        True if the record fullfills all three criteria to qualify as a gene, False otherwise.
+
+    """
+    if len(record.seq) % 3 != 0:
+        return False
+    if not record.seq[:3] in set(cd.generic_by_id[int(ct_id)].start_codons):
+        return False
+    if record.seq[-3:].translate() != "*":
+        return False
+    return True
+
+def is_mispairing(row, mask=None, mis_dict=None):
+    """
+    Returns whether the substitution is mispairing or misloading, based on the
+    near-cognate mask.
+    """
+    codon = row["codon"]
+    destination = row["aa_dest"]
+    if pd.notnull(codon) and pd.notnull(destination):
+        if (codon in mask.index) and destination:
+            return mask.loc[codon, destination] # TODO # throws problem
+        else: # if codon is not in the mask index # does not control for cases where destination is empy, but when would it even be empty?
+            return mis_dict[row["is_sub"]] # map mispairing dict from subs
+    else:
+        return float("NaN")
+
 def get_arguments():
     """ 
     Function to collect command line arguments.
@@ -51,14 +169,6 @@ def get_arguments():
     parser.add_argument(
         "path",
         help = 'Directory path of input files.'
-    )
-    
-    parser.add_argument(
-        "-tol",
-        "--tolerance",
-        type = float,
-        default = 0.005,
-        help = 'Mass tolerance for identifying mods as subs (default = 0.005).'
     )
     
     parser.add_argument(
@@ -101,6 +211,23 @@ def get_arguments():
 
     return parser.parse_args()
 
+def read_yaml(config_path):
+    """
+    Reads in yaml file and outputs a dictionary with its contents.
+    
+    Parameters
+    ----------
+    config_path : str
+        path to config.yaml file including the file name.
+
+    Returns
+    -------
+    dict
+        Dictionary containing the input of the yaml config file.
+    """
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
 def fasta_line(row):
     """
     Function to write a fasta file style entry from a DataFrame style table.
@@ -132,59 +259,31 @@ def fasta_line(row):
                  str(row["Seq_"]) + "\n")
     return entry
 
-def is_subs(row, tol, df):
-    """
-    Takes a row of the psm.tsv style file (df) as input and checks this row's 
-    corresponding origin aa ("aa_origin" column) and modification delta mass
-    ("deltaM" column) against the reference table for aa substitutions 
-    to identify delta mass & aa combinations that could be produced by 
-    an amino acid substitution.
-
-    Parameters
-    ----------
-    row : pandas row
-        row of the psm.tsv file that is currently tested.
-    df : pandas table
-        reference table of aa subsitutions and corresponding delta masses
-        contains "delta_mass" and "aa_origin" columns
-    
-    Returns
-    -------
-    result : str (or list of str)
-        empty if no aa subs is possible, 
-        list of subs types if multiple subs are possible (impossible with mass tol of 0.005)
-        str for single possible subs type
-
-    """
-    aa_origin = row["aa_origin"]
-    delta_mass = row["deltaM"]
-    dmass_min = delta_mass - tol
-    dmass_max = delta_mass + tol
-    hit = df.loc[ (df["delta_mass"].between(dmass_min, dmass_max)) & 
-                     (df["aa_origin"] == aa_origin) ]
-    if hit.empty:
-        result = ""
-    elif len(hit) > 1:
-        # result = hit.loc[:,"Sub"].to_list() # should not be possible, remove? will cause issues downstream
-        result = "ERROR, multiple hits"
-    else:
-        result = hit["Sub"].to_list()[0]
-    
-    return result
-
 #%% Main
 
 def main():
     # Parse arguments
     args = get_arguments()
     dir_path = args.path
-    tol = args.tolerance
-    
+
     # Check if directory exists
     if not os.path.isdir(dir_path):
         print("The path specified does not exist.")
         sys.exit()
-  
+
+    # Checks if the configuration file exists.
+    config_path = os.path.join(dir_path, "config.yaml")
+    
+    if not os.path.isfile(config_path):
+        print(ERROR_TEXT + "The configuration file specified does not exist." + ENDC_TEXT)
+        sys.exit()
+    
+    # Import values from configuration file
+    config = read_yaml(config_path)
+    tol = float(config["tol"])
+    ct_id = int(config["codon_table"])
+    cds_path = config["path_to_cds"]
+
     # Create output directory
     dir_path_out = os.path.join(dir_path, "output_fragpipe/")
     if os.path.isdir(dir_path_out):
@@ -202,7 +301,7 @@ def main():
         print(INFO_TEXT +
               "INFO ... Create output directory." +
               ENDC_TEXT)
-      
+            
     #%% Import files & create psm sum file
     print(INFO_TEXT + 
           "INFO ... Importing fragpipe results.",
@@ -241,6 +340,9 @@ def main():
     
     #%% Read in external input
     
+    # TODO make modular: generate subs table for each codon table externally and read in? 
+    # or auto-generate for each and give option to read in manually curated one?
+    
     # Substituion matrix, generated by "generate_mastertable.py" plus manually curated for additional artifacts
     # Pandas format; columns for Sub ("X to Y"), aa_origin ("X"), aa_dest ("Y"), delta_mass (float), mispairing (bool), danger (bool)
     subs_table = pd.read_csv("W:/Nicola/Scripts/my_scripts/skyline_pipeline/Substitution_matrix_v241104.csv", index_col = 0)
@@ -248,14 +350,61 @@ def main():
     dict_mispairing = {k:v for k, v in zip(subs_table["Sub"],subs_table["mispairing"])}
     dict_danger     = {k:v for k, v in zip(subs_table["Sub"],subs_table["danger"])}
     
+    #%% Import cDNA file
+    
+    print(INFO_TEXT + 
+          "INFO ... Importing cDNA file.",
+          ENDC_TEXT)
+    
+    # From Mordret substitution script
+    record_dict = {}
+
+    for record in SeqIO.parse(open(cds_path, "r"), "fasta"):
+        record.seq = record.seq.upper()
+        if is_gene(record, ct_id = ct_id):
+            bits = record.description.split(" ")
+            for i in bits:
+                if "gene_symbol" in i:
+                    record.name = i.split(":")[-1]
+            record_dict[record.name] = record
+
     #%% filters df for psm where additional delta mass was detected
     
     print(INFO_TEXT + 
           "INFO ... Identify amino acid substitutions.",
           ENDC_TEXT)
     
-    df_subs = df.copy().dropna(subset=["Assigned Modifications"]) # copy() to avoid SettingWithCopyWarning # dropna redudndant??
+    # Set up variables for misreading assessment
+    bases = "TCAG"
+    codons = [a + b + c for a in bases for b in bases for c in bases]
+    aas = [str(Seq(x).translate(table=ct_id)) for x in codons]
+    amino_acids = "".join(aas)
+    codon_table = get_codon_table(codons, amino_acids)
+    inverted_codon_table = get_inverted_codon_table(codon_table)
+    inverted_codon_table["L"] = inverted_codon_table["L"] + inverted_codon_table["I"]
 
+    # Create a mask to assess mispairing based on the nucleotide codon & the destination amino acid
+    mask = pd.DataFrame(data=False, index=codons, columns=list("ACDEFGHKLMNPQRSTVWY"), dtype=bool)
+
+    for label in codons:
+        # True/False: Does this codon have exactly one base pair mismatch to all possible codons (in order)?
+        near_cognates = np.array([hamming(i, label) == 1 for i in codons]) 
+        # List unique amino acids corresponding to near cognate codons (check in order, only report set)
+        reachable_aa = set(np.array(list(amino_acids))[near_cognates]) 
+        # True/False: Is the amino acid reachable from the original codon through a single base pair mismatch?
+        mask.loc[label] = [i in reachable_aa for i in "ACDEFGHKLMNPQRSTVWY"] 
+    
+    # Removes "near cognates" that produce the same amino acid (silent)
+    # Seems to be redundant from testing? not sure, leave in to be on the safe side for other codon tables
+    for label in mask.index:
+        for col in mask.columns:
+            if label in inverted_codon_table[col]:
+                mask.loc[label, col] = False
+
+    # Create new df with specifically psms containing a delta mass
+    # copy() to avoid SettingWithCopyWarning 
+    # dropna redudndant??
+    df_subs = df.copy().dropna(subset=["Assigned Modifications"]) 
     
     ### TODO: A LOT OF POTENTIAL HERE: 
     
@@ -263,25 +412,52 @@ def main():
     
     ###
     
-    df_subs["pos_peptide"] = [re.search(r"\d+(?=\w\()", x[0]).group(0) for x in df_subs["mods_clean2"]] # find position of modificiation using "\d" (digit) and positive lookahead for "\w" (single letter) and "(" open bracket
-    df_subs["pos"] = [int(x)+int(y) for x, y in zip(df_subs["pos_peptide"], df_subs["Protein Start"])] # add position in peptide and peptide start for mod position in protein
-
-    df_subs["aa_origin"] = [re.search(r"(?<=\d)[A-Z](?=\()", x[0]).group(0) for x in df_subs["mods_clean2"]]    # finds modified aa in mod syntax
-    df_subs["deltaM"] = [re.search(r"(?<=\()\S+(?=\))", x[0]).group(0) for x in df_subs["mods_clean2"]]         # finds delta mass in mod syntax
-    df_subs["deltaM"] = df_subs["deltaM"].astype(float) # transforms delta mass from str to float
-
-    is_subs_p = partial(is_subs, tol = tol, df=subs_table) # partial function to apply is_subs function with defalt ref table
-    df_subs["is_sub"] = df_subs.apply(is_subs_p, 1) # identify potential aa subs from fragpipe-identified modfication
-    df_subs["Sub"] = df_subs["is_sub"].replace({"to L": "to I/L"}, regex=True)
-    df_subs["aa_dest"] = [x.split(" ")[-1] for x in df_subs["is_sub"]] # finds destination aa from identified sub
-
-    df_subs["mispairing"] = df_subs["is_sub"].map(dict_mispairing, na_action="ignore") # maps mispairing boolean from ref table
-    df_subs["danger"] = df_subs["is_sub"].map(dict_danger, na_action="ignore") # maps danger boolean from ref table
+    # find position of modificiation using "\d" (digit) and positive lookahead for "\w" (single letter) and "(" open bracket
+    df_subs["pos_peptide"] = [re.search(r"\d+(?=\w\()", x[0]).group(0) for x in df_subs["mods_clean2"]]
+    # add position in peptide and peptide start for mod position in protein
+    # currently using amino acid numbering (1st AA = 1), not pythonic indexing (1st AA = 0)
+    df_subs["pos"] = [int(x)+int(y)-1 for x, y in zip(df_subs["pos_peptide"], df_subs["Protein Start"])]
+    # finds modified aa in mod syntax
+    df_subs["aa_origin"] = [re.search(r"(?<=\d)[A-Z](?=\()", x[0]).group(0) for x in df_subs["mods_clean2"]]
+    # finds delta mass in mod syntax
+    df_subs["deltaM"] = [re.search(r"(?<=\()\S+(?=\))", x[0]).group(0) for x in df_subs["mods_clean2"]]
+    # transforms delta mass from str to float
+    df_subs["deltaM"] = df_subs["deltaM"].astype(float)
+    
+    # Identifies triplet codon from cDNA file
+    df_subs["codon"] = [str(record_dict[g].seq[(p*3)-3:(p*3)])
+                        if g in record_dict.keys() else "NNN"   # for unassigned genes (e.g. contaminations)
+                        for g,p in zip(df_subs["Gene"], df_subs["pos"])]
+    
+    # partial function to apply is_subs function with default ref table
+    is_subs_p = partial(is_subs, tol = tol, df=subs_table)
+    # identify potential aa subs from fragpipe-identified modfication
+    df_subs["is_sub"] = df_subs.apply(is_subs_p, 1)
     
     # Creates new df with subs only
-    df_DP = df_subs[df_subs["Sub"]!=""].copy()
+    df_DP = df_subs[df_subs["is_sub"]!=""].copy()
+    
+    # Handles Ile/Leu ambiguity
+    df_DP["Sub"] = df_DP["is_sub"].replace({"to L": "to I/L"}, regex=True)
+    # finds destination aa from identified sub
+    df_DP["aa_dest"] = [x.split(" ")[-1] for x in df_DP["is_sub"]]
+    # maps danger boolean from ref table
+    df_DP["danger"] = df_DP["is_sub"].map(dict_danger, na_action="ignore")
+    
+    # Assess mispairing
+    
+    # old version (considers only amino acids):
+    # df_subs["mispairing"] = df_subs["is_sub"].map(dict_mispairing, na_action="ignore")
+    
+    # new version (considers codon identity too):
+    is_mispairing_p = partial(is_mispairing, mask=mask, mis_dict=dict_mispairing)
+    df_DP["mispairing"] = df_DP.apply(is_mispairing_p, 1)   
+    
     # Writes modified sequence of DP
     df_DP["modified_sequence"] = [x[:int(y)-1] + z + x[int(y):] for x, y, z in zip(df_DP["Peptide"], df_DP["pos_peptide"], df_DP["aa_dest"])]
+    
+    # Diagnostic
+    # df_DP.to_csv(os.path.join(dir_path_out, "df_DP_test" + dt.now().strftime("_v%Y%m%d") + ".csv"))
     
     #%% Dynamic subs filtering
     # Full section adapted from write_skyline_input_file.py    
