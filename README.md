@@ -25,3 +25,7 @@ or
 ```
 python write_fragpipe_to_skyline.py -h
 ```
+
+## Notes
+
+Please note that the capitalization of column names is inconsistent in different MaxQuant versions. While this script (write_maxquant_to_skyline.py) retains the original capitalization strategy, this issue is adressed during import of the MaxQuant results table during substitution identification using the [adapted substitution script](https://github.com/nfreyer/substitutions).
