@@ -29,7 +29,7 @@ import yaml
 os.system('color')
 
 positional_probability_cutoff = 0.95 # minimal threshold for delta mass localization probability # TODO
-# literally where is this in fragpipe
+
 
 #%% Variables
 
@@ -250,23 +250,63 @@ def fasta_line(row):
                  str(row["Seq_"]) + "\n")
     return entry
 
+# Print iterations progress
+# from: https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
+
+def log_me(text, log_file):
+    """
+
+    Parameters
+    ----------
+    text : str
+        Text to be added to log document.
+
+    Returns
+    -------
+    None.
+
+    """
+    timestamp = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(timestamp + "\t" + text, file=open(log_file, 'a'))
+
 #%% Main
 
-def main():
+def main(): 
+    time_start = dt.now()
     # Parse arguments
     args = get_arguments()
     dir_path = args.path
-
+    
     # Check if directory exists
     if not os.path.isdir(dir_path):
-        print("The path specified does not exist.")
+        print("ERROR ... The path specified does not exist.")
         sys.exit()
 
-    # Checks if the configuration file exists.
+    # Check if the configuration file exists.
     config_path = os.path.join(dir_path, "config.yaml")
     
     if not os.path.isfile(config_path):
-        print(ERROR_TEXT + "The configuration file specified does not exist." + ENDC_TEXT)
+        print(ERROR_TEXT + "ERROR ... The configuration file specified does not exist." + ENDC_TEXT)
         sys.exit()
     
     # Import values from configuration file
@@ -274,11 +314,18 @@ def main():
     tol = float(config["tol"])
     ct_id = int(config["codon_table"])
     cds_path = config["path_to_cds"]
-
+    
+    # Check if NCBI codon table exists
+    try:
+        ct_names = ", ".join([x for x in cd.generic_by_id[ct_id].names if x])
+    except:
+        print(ERROR_TEXT + f"Error ... NCBI codon table No. {ct_id} does not exist. Exit." + ENDC_TEXT)
+        sys.exit()
+    
     # Create output directory
     dir_path_out = os.path.join(dir_path, "output_fragpipe/")
     if os.path.isdir(dir_path_out):
-        dir_input = input(OKCYAN_TEXT + "INPUT REQUIRED ... Output directory already exists. Press y to create new: " + ENDC_TEXT)
+        dir_input = input(OKCYAN_TEXT + "INPUT REQUIRED ... Output directory already exists. Enter y to create new: " + ENDC_TEXT)
         if dir_input.lower() == "y":
             print(INFO_TEXT + "INFO ... Overwriting output directory" + ENDC_TEXT)
             timestamp = dt.now().strftime("_v%Y-%m-%d_%H-%M-%S")
@@ -292,25 +339,44 @@ def main():
         print(INFO_TEXT +
               "INFO ... Create output directory." +
               ENDC_TEXT)
-            
+    
+    # Set up log file
+    log_file = os.path.join(dir_path_out, "log.txt")
+    with open(log_file, 'a') as file:
+        file.write("CONFIGURATION\n")
+        file.write(f"Directory:         {dir_path}\n")
+        file.write(f"Mass tolerance:    {tol}\n")
+        file.write(f"NCBI Codon table:  {ct_id} - {ct_names} genetic code\n")
+        file.write(f"cDNA file:         {cds_path}\n\n")
+        
     #%% Import files & create psm sum file
-    print(INFO_TEXT + 
-          "INFO ... Importing fragpipe results.",
-          ENDC_TEXT)
+    log_me("### PROCESS STARTED ###", log_file = log_file)
+    print(INFO_TEXT + "INFO ... Importing fragpipe results." + ENDC_TEXT)
     
     with open(os.path.join(dir_path, "filelist_proteinprophet.txt"), "r") as file:
         filenames = [line.rstrip().split("\\")[-2] for line in file]
     
     print(INFO_TEXT + 
-          "INFO ... Raw files considered for analysis: \n \t - " +
-          "\n \t - ".join(filenames) + 
+          "INFO ... " + str(len(filenames)) + " raw files considered for analysis." +
           ENDC_TEXT)
+    
+    log_me("Importing fragpipe results from " + str(len(filenames)) + " raw files: ", log_file=log_file)
     
     # reads in all psm.tsv files (generated seperately for each raw file) & concats into one df
     df = pd.DataFrame()
-    for file in filenames:
+    
+    print(INFO_TEXT + "INFO ... Importing raw files:" + ENDC_TEXT)
+    
+    # Initial call to print 0% progress
+    printProgressBar(0, len(filenames), prefix = 'Progress:', suffix = 'Complete', length = 50)
+    
+    for i, file in enumerate(filenames):
         dfiter = pd.read_csv(os.path.join(dir_path,file,'psm.tsv'), sep='\t', low_memory=False)
         df = pd.concat([df,dfiter])
+        # Print progress bar:
+        printProgressBar(i + 1, len(filenames), prefix = 'Progress:', suffix = 'Complete', length = 50)
+        # Log import
+        log_me(f"- {file}", log_file=log_file)
     df.reset_index(drop=True,inplace=True)
 
     # Prepare df for ssl file
@@ -321,20 +387,21 @@ def main():
     df["mods_list"] = [x.split(", ") if type(x) == str else "" for x in df["Assigned Modifications"] ]
     df["mods_clean"] = df["mods_list"].map(lambda x: [a for a in x if r"C(57.021" not in a])       # filters out CamCys from mods
     df["mods_clean2"] = df["mods_clean"].map(lambda x: [a for a in x if r"N-term(" not in a])       # filters out Nterm mods from mods
-
-    # Diagnostic
-    df.to_csv(os.path.join(dir_path_out, "psm_sum" + dt.now().strftime("_v%Y%m%d") + ".csv"))    
     
-    print(OKGREEN_TEXT + 
-          "INFO ... Exported psm_sum file successfully.",
-          ENDC_TEXT)
-    
+    psm_input = input(OKCYAN_TEXT + "INPUT REQUIRED ... Do you wish to export a combined psm file (time-consuming)? Enter y to export psm_sum: " + ENDC_TEXT)
+    if psm_input.lower() == "y":
+        print(INFO_TEXT + "INFO ... Exporting psm_sum file. This step might take some time." + ENDC_TEXT)
+        log_me("Exporting psm_sum file", log_file = log_file)
+        df.to_csv(os.path.join(dir_path_out, "psm_sum" + dt.now().strftime("_v%Y%m%d") + ".csv"))
+        print(OKGREEN_TEXT + "INFO ... Exported psm_sum file successfully." + ENDC_TEXT)
+        log_me("Finished exporting psm_sum file", log_file = log_file)
+    else:
+        print(INFO_TEXT + "INFO ... Skipping export of psm_sum." + ENDC_TEXT)
+        log_me("Skipped export of psm_sum file", log_file = log_file)
    
     #%% Import cDNA file
     
-    print(INFO_TEXT + 
-          "INFO ... Importing cDNA file.",
-          ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Importing cDNA file." + ENDC_TEXT)
     
     # From Mordret substitution script
     record_dict = {}
@@ -347,12 +414,12 @@ def main():
                 if "gene_symbol" in i:
                     record.name = i.split(":")[-1]
             record_dict[record.name] = record
+    
+    log_me("Imported cDNA file", log_file = log_file)
 
     #%% Create lookup table for substituion & dict for mapping mispairing & artefacts
     
-    print(INFO_TEXT + 
-          "INFO ... Identify amino acid substitutions.",
-          ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Identifying amino acid substitutions." + ENDC_TEXT)
     
     # Set up variables for misreading assessment
     bases = "TCAG"
@@ -388,6 +455,8 @@ def main():
     # codon_table = dict(list(zip(codons, amino_acids))) #remove?
     ct = pd.DataFrame({'aa': aas, 'codon': codons})
     ct_dict ={k: list(v) for k, v in ct.groupby('aa')['codon'] if k !='*'}
+    
+    print(INFO_TEXT + "INFO ... Creating mispairing mask." + ENDC_TEXT)
     
     # Create a mask to assess mispairing based on the nucleotide codon & the destination amino acid
     # use nullable boolean dtype to be able to support True/False/NaN instead of just True/False with standard bool dtype
@@ -430,8 +499,12 @@ def main():
         for dest in aas_list_aa:
             if dest != origin:
                 dict_mispairing[origin + " to "+dest] = dest in near_aa_dict[origin]
-
+    
+    log_me("Created mispairing mask", log_file = log_file)
+    
     # Create lookup table for all possible substitutions
+    print(INFO_TEXT + "INFO ... Creating substitution lookup table." + ENDC_TEXT)
+    
     subs_matrix = [[str(i)+" to "+str(j) for i in aas_list] for j in aas_list_aa]
     flat_subs = list(set([item for sublist in subs_matrix for item in sublist]))
     
@@ -446,7 +519,11 @@ def main():
     
     subs_table = subs_table[subs_table["delta_mass"]!=0]         # resolves I/L issue & self-substitution
     
+    log_me("Created substitution lookup table", log_file = log_file)
+    
     # Add danger mods from unimod database
+    print(INFO_TEXT + "INFO ... Importing danger_mods." + ENDC_TEXT)
+    
     danger_mods_path = os.path.join(os.getcwd(), "danger_mods")
     danger_mods = pd.read_pickle(danger_mods_path)
 
@@ -467,7 +544,11 @@ def main():
     # Create dict from danger mods table for easier mapping downstream
     dict_danger = {k:v for k, v in zip(subs_table["Sub"],subs_table["danger"])}
     
+    log_me("Imported danger mods", log_file = log_file)
+    
     #%% Filters df for psm where delta mass could be consiered a substitution
+    
+    print(INFO_TEXT + "FILTERING ... Filter for substitutions. This step might take some time." + ENDC_TEXT)
     
     # Create new df with specifically psms containing a delta mass
     # copy() to avoid SettingWithCopyWarning 
@@ -520,41 +601,44 @@ def main():
     # Writes modified sequence of DP
     df_DP["modified_sequence"] = [x[:int(y)-1] + z + x[int(y):] for x, y, z in zip(df_DP["Peptide"], df_DP["pos_peptide"], df_DP["aa_dest"])]
     
+    log_me("Filtered for substitutions", log_file = log_file)
+    
     # Diagnostic
     # df_DP.to_csv(os.path.join(dir_path_out, "subs_test" + dt.now().strftime("_v%Y%m%d") + ".csv"))
     
     #%% Dynamic subs filtering
     # Full section adapted from write_skyline_input_file.py    
-    list_of_filters = []
+    
+    log_me("Started dynamic filtering of substitutions:", log_file = log_file)
+    
+    list_of_filters = ['`Is Contaminant` == False']
+    
+    print(INFO_TEXT + "FILTERING ... Filter out contaminants." + ENDC_TEXT)
     
     if args.mispairing:
         list_of_filters.append('mispairing != False')
-        print(INFO_TEXT + 
-            "FILTERING ... Filter out non-cognate errors." + 
-            ENDC_TEXT)
+        print(INFO_TEXT + "FILTERING ... Filter out non-cognate errors." + ENDC_TEXT)
+        log_me("> Filter out non-cognate decoding errors", log_file = log_file)
     
     if args.danger:
         list_of_filters.append('danger == False')
-        print(INFO_TEXT +
-            "FILTERING ... Filter out unimods." +
-            ENDC_TEXT)
+        print(INFO_TEXT + "FILTERING ... Filter out unimods." + ENDC_TEXT)
+        log_me("> Filter out unimods", log_file = log_file)
     
     if args.protein:
         protein_filter = 'Gene.str.match("' + str(args.protein) + '")'
         list_of_filters.append(protein_filter)
-        print(INFO_TEXT +
-            'FILTERING ... Filter in peptides from ' + str(args.protein) + '.' +
-            ENDC_TEXT)
-    
+        print(INFO_TEXT + 'FILTERING ... Filter in peptides from ' + str(args.protein) + '.' + ENDC_TEXT)
+        log_me("> Filter in peptides from " + str(args.protein), log_file = log_file)
+        
     if args.subs_in:
         subs_in = args.subs_in
         subs_in_listoflists = [list(x) for x in subs_in.split("+")]
         subs_in_list = [" to ".join(x) if len(x) == 2 else (x[0]+" to I/L") for x in subs_in_listoflists]
         subs_in_filter = 'Sub in @subs_in_list'
         list_of_filters.append(subs_in_filter)
-        print(INFO_TEXT +
-              'FILTERING ... Filter in substitutions: ' + ', '.join(subs_in_list) +
-              ENDC_TEXT)
+        print(INFO_TEXT + 'FILTERING ... Filter in substitutions: ' + ', '.join(subs_in_list) + ENDC_TEXT)
+        log_me("> Filter in substitutions: " + ', '.join(subs_in_list), log_file = log_file)
         
     if args.subs_out:
         subs_out = args.subs_out
@@ -562,40 +646,36 @@ def main():
         subs_out_list = [" to ".join(x) if len(x) == 2 else (x[0]+" to I/L") for x in subs_out_listoflists]
         subs_out_filter = 'Sub not in @subs_out_list'
         list_of_filters.append(subs_out_filter)
-        print(INFO_TEXT + 
-              'FILTERING ... Filter out substitutions: ' + ', '.join(subs_out_list) +
-              ENDC_TEXT)
+        print(INFO_TEXT +  'FILTERING ... Filter out substitutions: ' + ', '.join(subs_out_list) + ENDC_TEXT)
+        log_me("> Filter out substitutions: " + ', '.join(subs_out_list), log_file = log_file)
     
     if args.free_text:
         ftf = args.free_text
         list_of_filters.append(ftf)
-        print(INFO_TEXT + 
-              'FILTERING ... Apply free text filter: ' + ftf + 
-              ENDC_TEXT)
+        print(INFO_TEXT + 'FILTERING ... Apply free text filter: ' + ftf + ENDC_TEXT)
+        log_me("> Free text filter: " + ftf, log_file = log_file)
     
     query_cond = " & ".join(list_of_filters)
     
-    if any([args.mispairing, args.danger, args.protein, args.subs_in, args.subs_out, args.free_text]):
-        df_DP.query(query_cond, inplace=True, engine="python")
+    df_DP.query(query_cond, inplace=True, engine="python")
     
     if len(df_DP) == 0:
         print(ERROR_TEXT + 
               "ERROR ... No entries in subs after filtering, program was exited. Conflicting filters may have been applied." +
               ENDC_TEXT)
+        log_me("No entries in subs after filtering. Exit.", log_file = log_file)
         sys.exit()    
     else:
-        print(INFO_TEXT +
-              "INFO ...", len(df_DP), "entries in subs after filtering." +
-              ENDC_TEXT)
+        print(INFO_TEXT + "INFO ... " + str(len(df_DP)) + " entries in subs after filtering." + ENDC_TEXT)
+        log_me("> Finished filtering. " + str(len(df_DP)) + " entries left in subs", log_file = log_file)
+        
     
     # Diagnostic
     df_DP.to_csv(os.path.join(dir_path_out, "subs_filtered" + dt.now().strftime("_v%Y%m%d") + ".csv"))
     
     #%% Write fasta file
     
-    print(INFO_TEXT +
-              "INFO ... Prepare fasta file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Preparing fasta file." + ENDC_TEXT)
     
     # Remove replicate entries
     
@@ -631,9 +711,7 @@ def main():
     subs_long.to_csv(os.path.join(dir_path_out, "subs_long" + dt.now().strftime("_v%Y%m%d") + ".csv"))
     
     # Write fasta file
-    print(INFO_TEXT +
-              "INFO ... Write fasta file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Writing fasta file." + ENDC_TEXT)
     
     filename1 = dir_path_out + "fasta_skyline" + dt.now().strftime("_v%Y-%m-%d_%H-%M-%S") + ".fa"
     
@@ -642,15 +720,12 @@ def main():
         f.write(row["fasta"])
     f.close()
     
-    print(OKGREEN_TEXT + 
-          "INFO ... Exported fasta file successfully.",
-          ENDC_TEXT)
+    print(OKGREEN_TEXT + "INFO ... Exported fasta file successfully." + ENDC_TEXT)
+    log_me("Exported fasta file with " + str(len(subs_long)) + " entries", log_file = log_file)
     
     #%% Write ssl file from original df (psm sum file)
     
-    print(INFO_TEXT + 
-          "INFO ... Prepare ssl file.",
-          ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Preparing ssl file." + ENDC_TEXT)
     
     output_DP = pd.DataFrame({
         "file": df_DP["File_raw"],
@@ -688,20 +763,19 @@ def main():
     output["sequence"] = output["sequence"].str.replace("C", "C[+57.0]")
     
     # Write ssl file
-    print(INFO_TEXT +
-              "INFO ... Write ssl file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Writing ssl file." + ENDC_TEXT)
     
     filename2 = dir_path_out + "skyline_input" + dt.now().strftime("_v%Y-%m-%d_%H-%M-%S") + ".ssl"
     output.to_csv(filename2, sep="\t", index=False)
     
-    print(OKGREEN_TEXT + 
-          "INFO ... Exported ssl file successfully.",
-          ENDC_TEXT)
+    print(OKGREEN_TEXT + "INFO ... Exported ssl file successfully." + ENDC_TEXT)
+    log_me("Exported ssl file", log_file = log_file)
     
-    print(OKGREEN_TEXT + 
-          "INFO ... Script finished. Good luck",
-          ENDC_TEXT)
+    duration = dt.now() - time_start
+    duration_str = str(duration).split(".")[0]
+    
+    print(OKGREEN_TEXT + "INFO ... Script finished. Good luck" + ENDC_TEXT)
+    log_me(f"### PROCESS FINISHED - TOTAL RUNTIME: {duration_str} (HH:MM:SS) ###", log_file = log_file)
     
 #%%
 
