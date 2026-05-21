@@ -18,6 +18,15 @@ import argparse
 
 os.system('color')
 
+#%% Variables
+
+# Define logger colors
+OKGREEN_TEXT = "\033[92m"
+OKCYAN_TEXT = "\033[96m"
+INFO_TEXT = "\033[93m"
+ERROR_TEXT = "\033[91m"
+ENDC_TEXT = "\033[0m"
+
 #%%
 
 def get_arguments():
@@ -119,23 +128,42 @@ def fasta_line(row):
                  str(row["Seq_"]) + "\n")
     return entry
 
+def log_me(text, log_file):
+    """
+
+    Parameters
+    ----------
+    text : str
+        Text to be added to log document.
+
+    Returns
+    -------
+    None.
+
+    """
+    timestamp = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(timestamp + "\t" + text, file=open(log_file, 'a'))
+
+#%% Main
+
 def main():
+    time_start = dt.now()
     # Parser arguments
     args = get_arguments()
     dir_path = args.path
-    
-    if not os.path.isdir(dir_path):
-        print("The path specified does not exist.")
-        sys.exit()
-    
     subs_filename = args.filename
     mz_decimals = args.decimals
+    
+    # Check if directory exists
+    if not os.path.isdir(dir_path):
+        print(ERROR_TEXT + "ERROR ... The path specified does not exist." + ENDC_TEXT)
+        sys.exit()
     
     # File names
     subs_path = dir_path + "output/" + subs_filename
     
     if not os.path.isfile(subs_path):
-        print("The file specified does not exist.")
+        print(ERROR_TEXT + "ERROR ... The file specified does not exist." + ENDC_TEXT)
         sys.exit()
     
     filename_fasta = "fasta_skyline"
@@ -146,47 +174,56 @@ def main():
     timestamp = now.strftime("_v%Y-%m-%d_%H-%M-%S")
     timestamp1 = now.strftime("_v%Y%m%d")
     
-    #%%
+    # Create output directory
+    dir_path_out = os.path.join(dir_path, "skyline_input/")
+    if os.path.isdir(dir_path_out):
+        dir_input = input(OKCYAN_TEXT + "INPUT REQUIRED ... Output directory already exists. Enter y to create new: " + ENDC_TEXT)
+        if dir_input.lower() == "y":
+            print(INFO_TEXT + "INFO ... Overwriting output directory" + ENDC_TEXT)
+            timestamp = dt.now().strftime("_v%Y-%m-%d_%H-%M-%S")
+            dir_path_out = os.path.join(dir_path, "skyline_input" + timestamp + "/")
+            os.mkdir(dir_path_out)
+        else:
+            print(ERROR_TEXT + "ERROR ... exit" + ENDC_TEXT)
+            sys.exit()
+    else:
+        os.mkdir(dir_path_out)
+        print(INFO_TEXT + "INFO ... Create output directory." + ENDC_TEXT)
     
-    OKGREEN_TEXT = '\033[92m'
-    INFO_TEXT = '\033[93m'
-    ERROR_TEXT = '\033[91m'
-    ENDC_TEXT = '\033[0m'
+    # Set up log file
+    log_file = os.path.join(dir_path_out, "log.txt")
+    with open(log_file, 'a') as file:
+        file.write("CONFIGURATION\n")
+        file.write("Input source:       MaxQuant\n")
+        file.write(f"Directory:         {dir_path}\n")
+        file.write(f"Input file name:   {subs_filename}\n")
+        file.write(f"m/z accuracy:      {mz_decimals} decimal(s)\n")
     
     #%% Import subs, filter, clean
+    log_me("### PROCESS STARTED ###", log_file = log_file)
+    print(INFO_TEXT + "INFO ... Importing subs file." + ENDC_TEXT)
     
     subs = pd.read_csv(subs_path)
     
-    # # Filters subs
-    # subs_out = ["Q to E", "N to D", "F to Y", "T to E"] # unimods to exclude from analysis
-    # subs = subs[
-    #     (subs["mispairing"]!=False)                 # filters out non-cognates
-    #     # & (subs["danger"]==False)                 # filters out all unimods
-    #     # & (~subs["substitution"].isin(subs_out))  # filters out selected unimods
-    #     # & (subs["protein"].str.match("tuf[AB]"))  # filters out non-EF-Tu peptides
-    #     ]
-    
     # Dynamic subs filtering
+    log_me("Started dynamic filtering of substitutions:", log_file = log_file)
     list_of_filters = []
     
     if args.mispairing:
         list_of_filters.append('mispairing != False')
-        print(INFO_TEXT + 
-            "FILTERING ... Filter out non-cognate errors." + 
-            ENDC_TEXT)
+        print(INFO_TEXT + "FILTERING ... Filter out non-cognate errors." + ENDC_TEXT)
+        log_me("> Filter out non-cognate decoding errors", log_file = log_file)
     
     if args.danger:
         list_of_filters.append('danger == False')
-        print(INFO_TEXT +
-            "FILTERING ... Filter out unimods." +
-            ENDC_TEXT)
+        print(INFO_TEXT + "FILTERING ... Filter out unimods." + ENDC_TEXT)
+        log_me("> Filter out unimods", log_file = log_file)
     
     if args.protein:
         protein_filter = 'protein.str.match("' + str(args.protein) + '")'
         list_of_filters.append(protein_filter)
-        print(INFO_TEXT +
-            'FILTERING ... Filter in peptides from ' + str(args.protein) + '.' +
-            ENDC_TEXT)
+        print(INFO_TEXT + 'FILTERING ... Filter in peptides from ' + str(args.protein) + '.' + ENDC_TEXT)
+        log_me("> Filter in peptides from " + str(args.protein), log_file = log_file)
     
     if args.subs_in:
         subs_in = args.subs_in
@@ -194,9 +231,8 @@ def main():
         subs_in_list = [" to ".join(x) if len(x) == 2 else (x[0]+" to I/L") for x in subs_in_listoflists]
         subs_in_filter = 'substitution in @subs_in_list'
         list_of_filters.append(subs_in_filter)
-        print(INFO_TEXT +
-              'FILTERING ... Filter in substitutions: ' + ', '.join(subs_in_list) +
-              ENDC_TEXT)
+        print(INFO_TEXT + 'FILTERING ... Filter in substitutions: ' + ', '.join(subs_in_list) + ENDC_TEXT)
+        log_me("> Filter in substitutions: " + ', '.join(subs_in_list), log_file = log_file)
         
     if args.subs_out:
         subs_out = args.subs_out
@@ -204,16 +240,14 @@ def main():
         subs_out_list = [" to ".join(x) if len(x) == 2 else (x[0]+" to I/L") for x in subs_out_listoflists]
         subs_out_filter = 'substitution not in @subs_out_list'
         list_of_filters.append(subs_out_filter)
-        print(INFO_TEXT + 
-              'FILTERING ... Filter out substitutions: ' + ', '.join(subs_out_list) +
-              ENDC_TEXT)
+        print(INFO_TEXT +  'FILTERING ... Filter out substitutions: ' + ', '.join(subs_out_list) + ENDC_TEXT)
+        log_me("> Filter out substitutions: " + ', '.join(subs_out_list), log_file = log_file)
     
     if args.free_text:
         ftf = args.free_text
         list_of_filters.append(ftf)
-        print(INFO_TEXT + 
-              'FILTERING ... Apply free text filter: ' + ftf + 
-              ENDC_TEXT)
+        print(INFO_TEXT + 'FILTERING ... Apply free text filter: ' + ftf + ENDC_TEXT)
+        log_me("> Free text filter: " + ftf, log_file = log_file)
     
     query_cond = " & ".join(list_of_filters)
     
@@ -224,37 +258,25 @@ def main():
         print(ERROR_TEXT + 
               "ERROR ... No entries in subs after filtering, program was exited. Conflicting filters might have been applied." +
               ENDC_TEXT)
+        log_me("No entries in subs after filtering. Exit.", log_file = log_file)
         sys.exit()    
     else:
-        print(INFO_TEXT +
-              "INFO ...", len(subs), "entries in subs after filtering." +
-              ENDC_TEXT)
+        print(INFO_TEXT + "INFO ...", len(subs), "entries in subs after filtering." + ENDC_TEXT)
+        log_me("> Finished filtering. " + str(len(subs)) + " entries left in subs", log_file = log_file)
+        
         
     # Clean data
     subs["mispairing"] = subs["mispairing"].fillna(0)
     subs["codon"] = subs["codon"].fillna("NNN")
     subs["position"] = subs["position"].fillna(0)
-    
-    # Diagnostics:
-    dir_path_out = os.path.join(dir_path, "skyline_input/")
-    
-    if os.path.isdir(dir_path_out):
-        pass
-    else:
-        os.mkdir(dir_path_out)
-        print(INFO_TEXT +
-              "INFO ... Create output directory." +
-              ENDC_TEXT)
-    
+       
     subs.to_csv(os.path.join(dir_path_out, "subs_filtered" + timestamp1 + ".csv"))
     # print("***INFO*** Nan Values in subs:")
     # print(subs.isna().sum())
     
     #%% Write fasta file
     
-    print(INFO_TEXT +
-              "INFO ... Write fasta file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Preparing fasta file." + ENDC_TEXT)
     
     # Remove replicate entries
     columns_gb = ["protein", "DP Base Sequence", "modified_sequence", "position", "codon", "substitution"]
@@ -289,18 +311,24 @@ def main():
     
     f.close()
     
+    print(OKGREEN_TEXT + "INFO ... Exported fasta file successfully." + ENDC_TEXT)
+    log_me("Exported fasta file with " + str(len(subs_long)) + " entries", log_file = log_file)
+    
     #%% Import msms scans
     
-    print(INFO_TEXT +
-              "INFO ... Import msms scans file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Importing msms scans file." + ENDC_TEXT)
     
     path_to_msmsscans = os.path.join(dir_path, "msmsScans.txt")
     mms_iter = pd.read_csv(path_to_msmsscans, sep="\t", chunksize=10000, iterator=True, low_memory=False)
     mms = pd.concat(chunk for chunk in mms_iter)
     mms.reset_index(drop=True, inplace=True)
     
+    log_me("Imported msms scans file.", log_file = log_file)
+    
     #%% Cross reference DP & BP
+    
+    print(INFO_TEXT + "INFO ... Preparing ssl file." + ENDC_TEXT)
+    
     subs["id"] = subs.reset_index(drop=True).index
     mms["id"] = mms.reset_index(drop=True).index
     
@@ -317,7 +345,6 @@ def main():
     # subs_merged.to_csv(os.path.join(dir_path_out, "subs_merged.csv"))
     # duplicates = subs_merged[subs_merged[["Raw file", "m/z", "Charge", "DP Base Sequence", "DP Probabilities"]].duplicated(keep=False)]
     # duplicates.to_csv(os.path.join(dir_path_out, "duplicates.csv"))
-    
     
     #%% DP output table
     
@@ -367,23 +394,28 @@ def main():
     output["modifications"] = output["modifications"].str.replace("C", "C[+57.0]")
     
     # Write ssl file
-    print(INFO_TEXT +
-              "INFO ... Write ssl file." +
-              ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Writing ssl file." + ENDC_TEXT)
     
     filename2 = dir_path_out + filename_ssl + timestamp + ".ssl"
     output.to_csv(filename2, sep="\t", index=False)
     
+    print(OKGREEN_TEXT + "INFO ... Exported ssl file successfully." + ENDC_TEXT)
+    log_me("Exported ssl file", log_file = log_file)
+    
+    duration = dt.now() - time_start
+    duration_str = str(duration).split(".")[0]
+    
     # Diagnostics: 
     # output.to_csv(os.path.join(dir_path_out, "output.csv"))
-    if output["score"].isna().sum() == 0:
-        print(OKGREEN_TEXT + 
-              "INFO ... Script finished. All subs rows have been matched with mms rows.",
-              ENDC_TEXT)
+    unmatched_rows = output["score"].isna().sum()
+    if unmatched_rows == 0:
+        print(OKGREEN_TEXT + "INFO ... Script finished. All subs rows have been matched with mms rows." + ENDC_TEXT)
+        log_me(f"### PROCESS FINISHED - TOTAL RUNTIME: {duration_str} (HH:MM:SS) ###", log_file = log_file)
     else:
-        print(ERROR_TEXT + 
-              "INFO ... Script finished. Number of rows in subs that have not been matched with mms row:", output["score"].isna().sum(),
-              ENDC_TEXT)
+        print(ERROR_TEXT + "ERROR ... Number of rows in subs that have not been matched with mms row:", unmatched_rows, ENDC_TEXT)
+        log_me(f"### ERROR ### {unmatched_rows} rows in subs have not been matched with mms rows", log_file = log_file)
+
+#%%
     
 if __name__ == '__main__':
     main()

@@ -299,7 +299,7 @@ def main():
     
     # Check if directory exists
     if not os.path.isdir(dir_path):
-        print("ERROR ... The path specified does not exist.")
+        print(ERROR_TEXT + "ERROR ... The path specified does not exist." + ENDC_TEXT)
         sys.exit()
 
     # Check if the configuration file exists.
@@ -323,27 +323,26 @@ def main():
         sys.exit()
     
     # Create output directory
-    dir_path_out = os.path.join(dir_path, "output_fragpipe/")
+    dir_path_out = os.path.join(dir_path, "skyline_input/")
     if os.path.isdir(dir_path_out):
         dir_input = input(OKCYAN_TEXT + "INPUT REQUIRED ... Output directory already exists. Enter y to create new: " + ENDC_TEXT)
         if dir_input.lower() == "y":
             print(INFO_TEXT + "INFO ... Overwriting output directory" + ENDC_TEXT)
             timestamp = dt.now().strftime("_v%Y-%m-%d_%H-%M-%S")
-            dir_path_out = os.path.join(dir_path, "output_fragpipe" + timestamp + "/")
+            dir_path_out = os.path.join(dir_path, "skyline_input" + timestamp + "/")
             os.mkdir(dir_path_out)
         else:
             print(ERROR_TEXT + "ERROR ... exit" + ENDC_TEXT)
             sys.exit()
     else:
-        os.mkdir(os.path.join(dir_path, "output_fragpipe/"))
-        print(INFO_TEXT +
-              "INFO ... Create output directory." +
-              ENDC_TEXT)
+        os.mkdir(dir_path_out)
+        print(INFO_TEXT + "INFO ... Create output directory." + ENDC_TEXT)
     
     # Set up log file
     log_file = os.path.join(dir_path_out, "log.txt")
     with open(log_file, 'a') as file:
         file.write("CONFIGURATION\n")
+        file.write("Input source:       FragPipe\n")
         file.write(f"Directory:         {dir_path}\n")
         file.write(f"Mass tolerance:    {tol}\n")
         file.write(f"NCBI Codon table:  {ct_id} - {ct_names} genetic code\n")
@@ -351,7 +350,7 @@ def main():
         
     #%% Import files & create psm sum file
     log_me("### PROCESS STARTED ###", log_file = log_file)
-    print(INFO_TEXT + "INFO ... Importing fragpipe results." + ENDC_TEXT)
+    print(INFO_TEXT + "INFO ... Importing FragPipe results." + ENDC_TEXT)
     
     with open(os.path.join(dir_path, "filelist_proteinprophet.txt"), "r") as file:
         filenames = [line.rstrip().split("\\")[-2] for line in file]
