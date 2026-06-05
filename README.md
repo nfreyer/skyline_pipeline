@@ -1,7 +1,7 @@
 # skyline_pipeline
 
 This script enables the quantitative analysis of amino acid subtitutions from mass spectrometry data in Skyline by writing files for importing peptide search results (.ssl and .fasta files). It relies on an initial analysis of mass spectrometry raw files using one of the following two search engines: 
-1. MaxQuant: Modified peptides are identified using dependent peptide searching. Subsequent filtering for amino acid substitutions is required and needs to be performed using the collection of scripts published by [Mordret et al. (2019)](https://doi.org/10.1016/j.molcel.2019.06.041), using either the [original script collection](https://github.com/ernestmordret/substitutions) or an [adapted version](https://github.com/nfreyer/substitutions) tailored for the present workflow.
+1. MaxQuant: Modified peptides are identified using dependent peptide searching. Subsequent filtering for amino acid substitutions is required and needs to be performed using the collection of scripts published by [Mordret et al. (2019)](https://doi.org/10.1016/j.molcel.2019.06.041), using either the [original script collection](https://github.com/ernestmordret/substitutions) or an [adapted version](https://github.com/nfreyer/substitutions_codtab) tailored for the present workflow.
 2. MSFragger: Modified peptides are identified using an unrestricted mass offset search. The FragPipe workflow file and corresponding mass offset list are provided here.
 
 ## Available scripts
