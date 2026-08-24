@@ -719,8 +719,9 @@ def main():
         f.write(row["fasta"])
     f.close()
     
-    print(OKGREEN_TEXT + "INFO ... Exported fasta file successfully." + ENDC_TEXT)
-    log_me("Exported fasta file with " + str(len(subs_long)) + " entries", log_file = log_file)
+    print(OKGREEN_TEXT + "INFO ... Exported fasta file successfully with " + str((subs_long["Peptide_type"] == "DP").sum()) + " unique missense peptides." + ENDC_TEXT)
+    log_me("Exported fasta file with " + str(len(subs_long)) + " entries, including " + str((subs_long["Peptide_type"] == "DP").sum()) + " unique missense peptides.", log_file = log_file)
+    
     
     #%% Write ssl file from original df (psm sum file)
     
